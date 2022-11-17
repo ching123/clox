@@ -4,6 +4,7 @@
 
 #include "common.h"
 #include "debug.h"
+#include "compiler.h"
 
 
 
@@ -83,11 +84,17 @@ InterpretResult Run() {
 #undef READ_CONSTANT
 #undef BINARY_OP
 }
-
+/*
 InterpretResult Interpret(Chunk* chunk) {
 	vm.chunk = chunk;
 	vm.ip = chunk->code;
 	return Run();
+}
+*/
+InterpretResult Interpret(const char* source)
+{
+	Compile(source);
+	return INTERPRET_OK;
 }
 
 void PushStack(Value value) {
