@@ -93,7 +93,20 @@ InterpretResult Interpret(Chunk* chunk) {
 */
 InterpretResult Interpret(const char* source)
 {
-	Compile(source);
+	Chunk chunk;
+	InitChunk(&chunk);
+
+	if (!Compile(source, &chunk)) {
+		FreeChunk(&chunk);
+		return INTERPRET_COMPILE_ERROR;
+	}
+
+	vm.chunk = &chunk;
+	vm.ip = chunk.code;
+
+	InterpretResult result = Run();
+
+	FreeChunk(&chunk);
 	return INTERPRET_OK;
 }
 
