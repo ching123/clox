@@ -26,5 +26,4 @@ InterpretResult Interpret(const char* source);
 void PushStack(Value value);
 Value PopStack();
 
-
 #endif // !CLOX_VM_H

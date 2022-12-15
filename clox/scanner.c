@@ -20,7 +20,9 @@ static char Advance() {
 	return *scanner.current++;
 }
 static bool Match(char expected) {
-	return *scanner.current == expected;
+	if (IsAtEnd() || *scanner.current != expected) return false;
+	scanner.current++;
+	return true;
 }
 static char Peek() {
 	return *scanner.current;
@@ -36,7 +38,7 @@ static bool IsAlpha(char c) {
 		(c >= 'A' && c <= 'Z') ||
 		c == '_');
 }
-static bool CheckKeyword(
+static TokenType CheckKeyword(
 	int start, int length, const char* rest, TokenType type) {
 	if (scanner.current - scanner.start == start + length &&
 		memcmp(scanner.start + start, rest, length) == 0) {
@@ -115,7 +117,7 @@ static Token Number() {
 }
 static Token Identifier() {
 	while (IsAlpha(Peek()) || IsDigit(Peek())) Advance();
-	return MakeToken(TOKEN_IDENTIFIER);
+	return MakeToken(identifierType());
 }
 static void SkipWhitespace() {
 	for (;;) {
@@ -137,6 +139,7 @@ static void SkipWhitespace() {
 			else {
 				return;
 			}
+			break;
 		default:
 			return;
 		}
