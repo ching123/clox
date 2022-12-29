@@ -2,10 +2,13 @@
 
 #include <stdarg.h>
 #include <stdio.h>
+#include <string.h>
 
 #include "common.h"
 #include "debug.h"
 #include "compiler.h"
+#include "object.h"
+#include "memory.h"
 
 
 
@@ -13,7 +16,7 @@ VM vm;
 InterpretResult Run();
 
 static void ResetStack() {
-	vm.stakp_top = vm.stack;
+	vm.stack_top = vm.stack;
 }
 static void RuntimeError(const char* fmt, ...) {
 	va_list args;
@@ -29,9 +32,11 @@ static void RuntimeError(const char* fmt, ...) {
 }
 void InitVM() {
 	ResetStack();
+	vm.obj_head = NULL;
 }
 
 void FreeVM() {
+	FreeObjects();
 }
 
 /*
@@ -61,20 +66,32 @@ InterpretResult Interpret(const char* source)
 }
 
 void PushStack(Value value) {
-	*vm.stakp_top = value;
-	vm.stakp_top++;
+	*vm.stack_top = value;
+	vm.stack_top++;
 }
 
 Value PopStack() {
-	vm.stakp_top--;
-	return *vm.stakp_top;
+	vm.stack_top--;
+	return *vm.stack_top;
 }
 
 static Value PeekStack(int distance) {
-	return vm.stakp_top[-1 - distance];
+	return vm.stack_top[-1 - distance];
 }
 static bool IsFalsey(Value value) {
 	return IS_NIL(value) || (IS_BOOL(value) && !AS_BOOL(value));
+}
+static void Concatenate() {
+	ObjString* b = AS_STRING(PopStack());
+	ObjString* a = AS_STRING(PopStack());
+	int length = a->length + b->length;
+	char* buffer = ALLOCATE(char, length + 1);
+	memcpy(buffer, a->str, a->length);
+	memcpy(buffer + a->length, b->str, b->length);
+	buffer[length] = '\0';
+
+	ObjString* result = TakeString(buffer, length);
+	PushStack(OBJ_VAL(result));
 }
 
 static InterpretResult Run() {
@@ -82,7 +99,7 @@ static InterpretResult Run() {
 #define READ_CONSTANT() (vm.chunk->constants.values[READ_BYTE()])
 #define BINARY_OP(ValueType, op) \
 	do { \
-		if (!IS_NUMBER(PeekStack(0)) || !IS_NUMBER(PeekStack(0))) { \
+		if (!IS_NUMBER(PeekStack(0)) || !IS_NUMBER(PeekStack(1))) { \
 			RuntimeError("operands must be numbers."); \
 			return INTERPRET_RUNTIME_ERROR; \
 		} \
@@ -94,7 +111,7 @@ static InterpretResult Run() {
 	for (;;) {
 #ifdef DEBUG_TRACE_EXECUTION
 		printf("          ");
-		for (Value* slot = vm.stack; slot < vm.stakp_top; ++slot) {
+		for (Value* slot = vm.stack; slot < vm.stack_top; ++slot) {
 			printf("[");
 			PrintValue(*slot);
 			printf("]");
@@ -142,7 +159,19 @@ static InterpretResult Run() {
 			break;
 		}
 		case OP_ADD: {
-			BINARY_OP(NUMBER_VAL, +);
+			if (IS_STRING(PeekStack(0)) && IS_STRING(PeekStack(1))) {
+				Concatenate();
+			}
+			else if (IS_STRING(PeekStack(0)) && IS_STRING(PeekStack(1))) {
+				double b = AS_NUMBER(PopStack());
+				double a = AS_NUMBER(PopStack());
+				PushStack(NUMBER_VAL(a + b));
+			}
+			else {
+				RuntimeError("operands must be two strings or two numbers.");
+				return INTERPRET_RUNTIME_ERROR;
+			}
+			//BINARY_OP(NUMBER_VAL, +);
 			break;
 		}
 		case OP_SUBTRACT: {

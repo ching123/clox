@@ -4,6 +4,7 @@
 #include <stdlib.h>
 
 #include "scanner.h"
+#include "object.h"
 
 #ifdef DEBUG_PRINT_CODE
 #include "debug.h"
@@ -44,6 +45,7 @@ static void Grouping();
 static void Unary();
 static void Binary();
 static void Number();
+static void String();
 static void Literal();
 ParseRule rules[] = {
 	[TOKEN_LEFT_PAREN]				= {Grouping, NULL,   PREC_NONE},
@@ -66,7 +68,7 @@ ParseRule rules[] = {
 	[TOKEN_LESS]					= {NULL,     Binary, PREC_EQUALITY},
 	[TOKEN_LESS_EQUAL]				= {NULL,     Binary, PREC_EQUALITY},
 	[TOKEN_IDENTIFIER]				= {NULL,     NULL,   PREC_NONE},
-	[TOKEN_STRING]					= {NULL,     NULL,   PREC_NONE},
+	[TOKEN_STRING]					= {String,   NULL,   PREC_NONE},
 	[TOKEN_NUMBER]					= {Number,   NULL,   PREC_NONE},
 	[TOKEN_AND]						= {NULL,     NULL,   PREC_NONE},
 	[TOKEN_CLASS]					= {NULL,     NULL,   PREC_NONE},
@@ -186,6 +188,9 @@ static void Grouping() {
 static void Number() {
 	double value = strtod(parser.previous.start, NULL);
 	EmitConstant(NUMBER_VAL(value));
+}
+static void String() {
+	EmitConstant(OBJ_VAL(CopyString(parser.previous.start + 1, parser.previous.length - 2)));
 }
 static void Unary() {
 	TokenType type = parser.previous.type;
