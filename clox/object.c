@@ -20,24 +20,47 @@ static Obj* AllocateObject(size_t size, ObjType type) {
 	return obj;
 }
 
-static ObjString* AllocateString(char* buffer, int length) {
+static ObjString* AllocateString(char* buffer, int length, uint32_t hash) {
 	ObjString* obj_str = ALLOCATE_OBJ(ObjString, OBJ_STRING);
 	obj_str->length = length;
 	obj_str->str = buffer;
+	obj_str->hash = hash;
+	TableSet(&vm.strings, obj_str, NIL_VAL);
 	return obj_str;
+}
+
+static uint32_t HashString(const char* src, int length) {
+	uint32_t hash = 2166136261u;
+	for (int i = 0; i < length; i++) {
+		hash ^= (uint8_t)src[i];
+		hash *= 16777619;
+	}
+	return hash;
 }
 
 ObjString* TakeString(char* src, int length)
 {
-	return AllocateString(src, length);
+	uint32_t hash = HashString(src, length);
+	ObjString* interned = TableFindString(&vm.strings, src, length, hash);
+	if (interned != NULL) {
+		FREE_ARRAY(char, src, length + 1);
+		return interned;
+	}
+	return AllocateString(src, length, hash);
 }
 
 ObjString* CopyString(const char* src, int length)
 {
+	uint32_t hash = HashString(src, length);
+	ObjString* interned = TableFindString(&vm.strings, src, length, hash);
+	if (interned != NULL) {
+		return interned;
+	}
+
 	char* buffer = ALLOCATE(char, length + 1);
 	memcpy(buffer, src, length);
 	buffer[length] = '\0';
-	return AllocateString(buffer, length);
+	return AllocateString(buffer, length, hash);
 }
 
 void PrintObject(Value value)

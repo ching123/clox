@@ -32,10 +32,12 @@ static void RuntimeError(const char* fmt, ...) {
 }
 void InitVM() {
 	ResetStack();
+	InitTable(&vm.strings);
 	vm.obj_head = NULL;
 }
 
 void FreeVM() {
+	FreeTable(&vm.strings);
 	FreeObjects();
 }
 
