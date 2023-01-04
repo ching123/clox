@@ -32,11 +32,13 @@ static void RuntimeError(const char* fmt, ...) {
 }
 void InitVM() {
 	ResetStack();
+	InitTable(&vm.globals);
 	InitTable(&vm.strings);
 	vm.obj_head = NULL;
 }
 
 void FreeVM() {
+	FreeTable(&vm.globals);
 	FreeTable(&vm.strings);
 	FreeObjects();
 }
@@ -99,6 +101,7 @@ static void Concatenate() {
 static InterpretResult Run() {
 #define READ_BYTE() (*vm.ip++)
 #define READ_CONSTANT() (vm.chunk->constants.values[READ_BYTE()])
+#define READ_STRING() AS_STRING(READ_CONSTANT())
 #define BINARY_OP(ValueType, op) \
 	do { \
 		if (!IS_NUMBER(PeekStack(0)) || !IS_NUMBER(PeekStack(1))) { \
@@ -124,10 +127,49 @@ static InterpretResult Run() {
 
 		uint8_t instruction;
 		switch (instruction = READ_BYTE()) {
-		case OP_RETURN: {
+		case OP_PRINT: {
 			PrintValue(PopStack());
 			printf("\n");
+			break;
+		}
+		case OP_RETURN: {
 			return INTERPRET_OK;
+		}
+		case OP_POP: {
+			PopStack();
+			break;
+		}
+		case OP_DEFINE_GLOBAL: {
+			ObjString* name = READ_STRING();
+			// ensures the VM can still find the value if a garbage
+			// collection is triggered right in the middle of adding
+			// it to the hash table. That¡¯s a distinct possibility
+			// since the hash table requires dynamic allocation
+			// when it resizes.
+			// ???
+			// http://www.craftinginterpreters.com/global-variables.html#:~:text=the%20hash%20table.-,That%20ensures%20the%20VM%20can%20still%20find%20the%20value%20if%20a%20garbage%20collection%20is%20triggered%20right%20in%20the%20middle%20of%20adding%20it%20to%20the%20hash%20table.%20That%E2%80%99s%20a%20distinct%20possibility%20since%20the%20hash%20table%20requires%20dynamic%20allocation%20when%20it%20resizes.,-This%20code%20doesn%E2%80%99t
+			TableSet(&vm.globals, name, PeekStack(0));
+			PopStack();
+			break;
+		}
+		case OP_GET_GLOBAL: {
+			ObjString* name = READ_STRING();
+			Value value;
+			if (!TableGet(&vm.globals, name, &value)) {
+				RuntimeError("undefined variable '%s'.", name->str);
+				return INTERPRET_RUNTIME_ERROR;
+			}
+			PushStack(value);
+			break;
+		}
+		case OP_SET_GLOBAL: {
+			ObjString* name = READ_STRING();
+			if (TableSet(&vm.globals, name, PeekStack(0))) {
+				TableDelete(&vm.globals, name);
+				RuntimeError("undefined variable '%s'.", name->str);
+				return INTERPRET_RUNTIME_ERROR;
+			}
+			break;
 		}
 		case OP_CONSTANT: {
 			Value constant = READ_CONSTANT();
@@ -164,7 +206,7 @@ static InterpretResult Run() {
 			if (IS_STRING(PeekStack(0)) && IS_STRING(PeekStack(1))) {
 				Concatenate();
 			}
-			else if (IS_STRING(PeekStack(0)) && IS_STRING(PeekStack(1))) {
+			else if (IS_NUMBER(PeekStack(0)) && IS_NUMBER(PeekStack(1))) {
 				double b = AS_NUMBER(PopStack());
 				double a = AS_NUMBER(PopStack());
 				PushStack(NUMBER_VAL(a + b));
@@ -196,5 +238,6 @@ static InterpretResult Run() {
 
 #undef READ_BYTE
 #undef READ_CONSTANT
+#undef READ_STRING
 #undef BINARY_OP
 }

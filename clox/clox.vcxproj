@@ -151,6 +151,7 @@
     <ClInclude Include="vm.h" />
   </ItemGroup>
   <ItemGroup>
+    <Text Include="syntax.txt" />
     <Text Include="test.txt" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />

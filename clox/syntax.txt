@@ -1,0 +1,12 @@
+statement      ¡ú exprStmt
+               | forStmt
+               | ifStmt
+               | printStmt
+               | returnStmt
+               | whileStmt
+               | block ;
+
+declaration    ¡ú classDecl
+               | funDecl
+               | varDecl
+               | statement ;
