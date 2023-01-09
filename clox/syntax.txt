@@ -10,3 +10,5 @@ declaration    ¡ú classDecl
                | funDecl
                | varDecl
                | statement ;
+
+block          ¡ú "{" declaration* "}" ;
