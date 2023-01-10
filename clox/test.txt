@@ -12,7 +12,8 @@
 //breakfast = "beignets with " + beverage;
 
 //print breakfast;
-var a = "outer";
-{
-var b = a;
-}
+//var a = "outer";
+//{
+//var b = a;
+//}
+if (true) print("hello");
