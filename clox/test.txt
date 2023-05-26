@@ -16,4 +16,26 @@
 //{
 //var b = a;
 //}
-if (true) print("hello");
+//if (true) print("hello");
+//fun c() {
+//  return 3;
+//}
+//fun b() { 
+//  c();
+//}
+//fun a() {
+//  b();
+//}
+//a();
+
+//fun areWeHavingItYet() {
+//  print "Yes we are!";
+//}
+
+//print areWeHavingItYet;
+
+fun test(n) {
+	if (n < 2) print("hello");
+	else print("not good");
+}
+test(3);

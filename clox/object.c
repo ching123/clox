@@ -38,6 +38,11 @@ static uint32_t HashString(const char* src, int length) {
 	return hash;
 }
 
+static void PrintFunction(const ObjFunction* function) {
+	function->name != NULL ?
+		printf("<fn %s>", function->name->str) : printf("<script>");
+}
+
 ObjString* TakeString(char* src, int length)
 {
 	uint32_t hash = HashString(src, length);
@@ -63,12 +68,34 @@ ObjString* CopyString(const char* src, int length)
 	return AllocateString(buffer, length, hash);
 }
 
+ObjFunction* NewFunction()
+{
+	ObjFunction* function = ALLOCATE_OBJ(ObjFunction, OBJ_FUNCTION);
+	function->arity = 0;
+	function->name = NULL;
+	InitChunk(&function->chunk);
+	return function;
+}
+
+ObjNative* NewNative(NativeFn function)
+{
+	ObjNative* native = ALLOCATE_OBJ(ObjNative, OBJ_NATIVE);
+	native->function = function;
+	return native;
+}
+
 void PrintObject(Value value)
 {
 	switch (OBJ_TYPE(value))
 	{
 	case OBJ_STRING:
 		printf("%s", AS_CSTRING(value));
+		break;
+	case OBJ_FUNCTION:
+		PrintFunction(AS_FUNCTION(value));
+		break;
+	case OBJ_NATIVE:
+		printf("<native fn>");
 		break;
 	}
 }

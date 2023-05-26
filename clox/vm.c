@@ -3,6 +3,7 @@
 #include <stdarg.h>
 #include <stdio.h>
 #include <string.h>
+#include <time.h>
 
 #include "common.h"
 #include "debug.h"
@@ -14,9 +15,11 @@
 
 VM vm;
 InterpretResult Run();
+static bool Call(ObjFunction* function, int arg_count);
 
 static void ResetStack() {
 	vm.stack_top = vm.stack;
+	vm.frame_count = 0;
 }
 static void RuntimeError(const char* fmt, ...) {
 	va_list args;
@@ -25,16 +28,38 @@ static void RuntimeError(const char* fmt, ...) {
 	va_end(args);
 	fputs("\n", stderr);
 
-	size_t index = vm.ip - vm.chunk->code - 1;
-	int line_num = vm.chunk->lines[index];
-	fprintf(stderr, "[line %d] in script.\n", line_num);
+	for (int i = vm.frame_count - 1; i >= 0; i--) {
+		CallFrame* frame = &vm.frames[i];
+		ObjFunction* function = frame->function;
+		size_t index = frame->ip - frame->function->chunk.code - 1;
+		fprintf(stderr, "[line %d] in ", function->chunk.lines[index]);
+		if (function->name == NULL) {
+			fprintf(stderr, "script\n");
+		}
+		else {
+			fprintf(stderr, "%s()\n", function->name->str);
+		}
+	}
+
 	ResetStack();
+}
+static void DefineNative(const char* name, NativeFn function) {
+	PushStack(OBJ_VAL(CopyString(name, (int)strlen(name))));
+	PushStack(OBJ_VAL(NewNative(function)));
+	TableSet(&vm.globals, AS_STRING(vm.stack[0]), vm.stack[1]);
+	PopStack();
+	PopStack();
+}
+static Value ClockNative(int arg_count, Value* args) {
+	return NUMBER_VAL((double)clock() / CLOCKS_PER_SEC);
 }
 void InitVM() {
 	ResetStack();
 	InitTable(&vm.globals);
 	InitTable(&vm.strings);
 	vm.obj_head = NULL;
+
+	DefineNative("clock", ClockNative);
 }
 
 void FreeVM() {
@@ -55,18 +80,16 @@ InterpretResult Interpret(const char* source)
 	Chunk chunk;
 	InitChunk(&chunk);
 
-	if (!Compile(source, &chunk)) {
-		FreeChunk(&chunk);
+	ObjFunction* function = Compile(source);
+	if (function == NULL) {
 		return INTERPRET_COMPILE_ERROR;
 	}
 
-	vm.chunk = &chunk;
-	vm.ip = chunk.code;
+	PushStack(OBJ_VAL(function));
+	Call(function, 0);
 
-	InterpretResult result = Run();
-
-	FreeChunk(&chunk);
-	return INTERPRET_OK;
+	printf("\n\n");
+	return Run();
 }
 
 void PushStack(Value value) {
@@ -97,12 +120,48 @@ static void Concatenate() {
 	ObjString* result = TakeString(buffer, length);
 	PushStack(OBJ_VAL(result));
 }
+static bool Call(ObjFunction* function, int arg_count) {
+	if (arg_count != function->arity) {
+		RuntimeError("expect %d arguments but got %d.",
+			function->arity, arg_count);
+		return false;
+	}
+	if (vm.frame_count == FRAME_MAX) {
+		RuntimeError("stack overflow.");
+		return false;
+	}
+
+	CallFrame* frame = &vm.frames[vm.frame_count++];
+	frame->function = function;
+	frame->ip = function->chunk.code;
+	frame->slots = vm.stack_top - arg_count - 1;
+	return true;
+}
+static bool CallValue(Value value, int arg_count) {
+	if (IS_OBJ(value)) {
+		switch (OBJ_TYPE(value)) {
+		case OBJ_FUNCTION: return Call(AS_FUNCTION(value), arg_count);
+		case OBJ_NATIVE: {
+			NativeFn function = AS_NATIVE(value);
+			Value result = function(arg_count, vm.stack_top - arg_count);
+			vm.stack_top -= arg_count + 1;
+			PushStack(result);
+			return true;
+		}
+		default: break;
+		}
+	}
+	RuntimeError("can only call functions and classes.");
+	return false;
+}
 
 static InterpretResult Run() {
-#define READ_BYTE() (*vm.ip++)
-#define READ_CONSTANT() (vm.chunk->constants.values[READ_BYTE()])
+	CallFrame* frame = &vm.frames[vm.frame_count - 1];
+
+#define READ_BYTE() (*frame->ip++)
+#define READ_CONSTANT() (frame->function->chunk.constants.values[READ_BYTE()])
 #define READ_STRING() AS_STRING(READ_CONSTANT())
-#define READ_SHORT() (vm.ip += 2, (uint16_t)((vm.ip[-2] << 8) | vm.ip[-1]))
+#define READ_SHORT() (frame->ip += 2, (uint16_t)((frame->ip[-2] << 8) | frame->ip[-1]))
 #define BINARY_OP(ValueType, op) \
 	do { \
 		if (!IS_NUMBER(PeekStack(0)) || !IS_NUMBER(PeekStack(1))) { \
@@ -123,7 +182,7 @@ static InterpretResult Run() {
 			printf("]");
 		}
 		printf("\n");
-		DisassembleInstruction(vm.chunk, (int)(vm.ip - vm.chunk->code));
+		DisassembleInstruction(&frame->function->chunk, (int)(frame->ip - frame->function->chunk.code));
 #endif // DEBUG_TRACE_EXECUTION
 
 		uint8_t instruction;
@@ -134,22 +193,40 @@ static InterpretResult Run() {
 			break;
 		}
 		case OP_RETURN: {
-			return INTERPRET_OK;
+			Value result = PopStack();
+			vm.frame_count--;
+			if (vm.frame_count == 0) {
+				PopStack();
+				return INTERPRET_OK;
+			}
+
+			vm.stack_top = frame->slots;
+			PushStack(result);
+			frame = &vm.frames[vm.frame_count - 1];
+			break;
+		}
+		case OP_CALL: {
+			int arg_count = READ_BYTE();
+			if (!CallValue(PeekStack(arg_count), arg_count)) {
+				return INTERPRET_RUNTIME_ERROR;
+			}
+			frame = &vm.frames[vm.frame_count - 1];
+			break;
 		}
 		case OP_LOOP: {
 			uint16_t offset = READ_SHORT();
-			vm.ip -= offset;
+			frame->ip -= offset;
 			break;
 		}
 		case OP_JUMP: {
 			uint16_t offset = READ_SHORT();
-			vm.ip += offset;
+			frame->ip += offset;
 			break;
 		}
 		case OP_JUMP_IF_FALSE: {
 			uint16_t offset = READ_SHORT();
 			if (IsFalsey(PeekStack(0))) {
-				vm.ip += offset;
+				frame->ip += offset;
 			}
 			break;
 		}
@@ -165,7 +242,6 @@ static InterpretResult Run() {
 			// since the hash table requires dynamic allocation
 			// when it resizes.
 			// ???
-			// http://www.craftinginterpreters.com/global-variables.html#:~:text=the%20hash%20table.-,That%20ensures%20the%20VM%20can%20still%20find%20the%20value%20if%20a%20garbage%20collection%20is%20triggered%20right%20in%20the%20middle%20of%20adding%20it%20to%20the%20hash%20table.%20That%E2%80%99s%20a%20distinct%20possibility%20since%20the%20hash%20table%20requires%20dynamic%20allocation%20when%20it%20resizes.,-This%20code%20doesn%E2%80%99t
 			TableSet(&vm.globals, name, PeekStack(0));
 			PopStack();
 			break;

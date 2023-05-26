@@ -6,6 +6,6 @@
 #define DEBUG_PRINT_CODE
 #define DEBUG_TRACE_EXECUTION
 
-bool Compile(const char* source, Chunk* chunk);
+ObjFunction* Compile(const char* source);
 
 #endif // !CLOC_COMPILER_H
