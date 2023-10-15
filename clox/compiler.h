@@ -3,8 +3,6 @@
 
 #include "vm.h"
 
-#define DEBUG_PRINT_CODE
-#define DEBUG_TRACE_EXECUTION
 
 ObjFunction* Compile(const char* source);
 
