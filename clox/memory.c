@@ -15,10 +15,20 @@ static void FreeObject(Obj* obj) {
 		FREE(ObjString, obj);
 		break;
 	}
+	case OBJ_UPVALUE: {
+		FREE(ObjUpvalue, obj);
+		break;
+	}
 	case OBJ_FUNCTION: {
 		ObjFunction* function = (ObjFunction*)(obj);
 		FreeChunk(&function->chunk);
 		FREE(ObjFunction, function);
+		break;
+	}
+	case OBJ_CLOSURE: {
+		ObjClosure* closure = (ObjClosure*)obj;
+		FREE_ARRAY(ObjUpvalue*, closure->upvalues, closure->upvalue_count);
+		FREE(ObjClosure, obj);
 		break;
 	}
 	case OBJ_NATIVE: {
